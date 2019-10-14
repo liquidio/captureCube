@@ -1,13 +1,17 @@
 from cv2 import cv2
 import numpy as np
 import json
-import serial
-from serial.tools.list_ports import comports
+import sys
+from solver import serial_init
 
 class Sole:
         def __init__(self,frame):
                 self.frame = frame
-                self.svm = []
+        def run(self):
+                self.pre_dispose()
+                self.get_roi()
+                self.get_svm_date()
+                self.save()
         def pre_dispose(self):#返回一个面上的颜色平均值HSVRGB
                 img = cv2.GaussianBlur(self.frame,(7,7),0)
                 b,g,r = cv2.split(img)
@@ -29,77 +33,89 @@ class Sole:
                 self.img_hsv = img_hsv
                 img =  cv2.cvtColor(img_hsv,cv2.COLOR_HSV2BGR)
                 self.img_bgr = img
-        def get_img(self):
+                self.frame = img
+        def get_visual(self):
+                self.pre_dispose()
                 return self.img_bgr
         def get_svm_date(self):
                 '''
                 #HSVRGB 平均值
                 '''
-                bgr = np.mean(self.img_bgr)
-                hsv = np.mean(self.img_hsv)
-                return (bgr+hsv)/2
-        def set_roi(self,x,x1,y,y1):
-                self.frame = self.frame[x:x1,y:y1]
-                cv2.imwrite("roi.array",[x,x1,y,y1])
+                y,y1,x,x1 = self.roi
+                self.svm_date = []
+                height = (x1-x)/3
+                width = (y1-y)/3
+                #图像分为9个区域，计算9个区域的hsv 和 bgr 的平均值，返回数组self.svm
+                for i in range(3):
+                        for j in range(3):
+                                t = self.img_bgr[(y+i*height):(y+height*(i+1)),(x+j*width):(x+width(j+1))]
+                                t1 = self.img_hsv[(y+i*height):(y+height*(i+1)),(x+j*width):(x+width(j+1))]
+                                bgr = np.mean(t)
+                                hsv = np.mean(t1)
+                                self.svm_date.append((bgr+hsv)/2)
+                return self.svm_date
         def get_roi(self):
-                return cv2.imread('roi.array')
-        def set_svm_label(self,label):
-                if(type(label) is np.array):
-                        self.svm_label = label
-                        return True
-                return False
-        def set_svm(self,data,label):
-                self.svm.append([data,label])
-                with open('svm_date','w') as f:
-                        f.write()
-        def get_svm(self):
-                json =''
-                with open('svm_date','r') as f:
-                        json = f.read()
-                return json.dump()
-        #svm 训练
-        def training(self):
-                svm = cv2.ml.SVM_create() #创建SVM model 
-                data = cv2.imread('svm_data.array')
-                label = cv2.imread('svm_label.array')
-                #属性设置
-                svm.setType(cv2.ml.SVM_C_SVC)
-                svm.setKernel(cv2.ml.SVM_LINEAR)#线性核
-                svm.setC(0.01)
-                #训练
-                self.svm_sole = svm.train(data,cv2.ml.ROW_SAMPLE,label)
-                svm.save('core.array')
-        def get_svm_sole(self):
-                return cv2.imread('core.array')
+                with open ("roi.json",'r') as f:
+                        roi = f.read()
+                        roi = json.loads(roi)
+                        self.frame = self.frame[roi[0]:roi[1],roi[2]:roi[3]]
+                        self.roi = roi
+                        return roi
+        def roi_init(self):
+                with open('roi.json','w') as f:
+                        f.write(json.dumps(range(4)))
+        def save(self):
+                with open ('svm_date.json','r') as f:
+                        pre = f.read()
+                        pre = json.loads(pre)
+                with open ('svm_date.json','w') as f:
+                        now = pre + self.svm_date
+                        f.write(json.dumps(now))
 
-class Cube(Sole):
-        def __init__(self):
-                self.u_face =0
-                self.d_face =0
-                self.l_face =0
-                self.r_face =0
-                self.f_face =0
-                self.b_face =0
-        def serial_init(self,port):
-                port_list = list(comports())
-                for port in port_list:
-                        print(port)
-                bps = 115200
-                timex = 5
-                self.serial = serial.Serial(port,bps,timeout=timex)
+def load():
+        with open ('svm_date.json','r') as f:
+                return json.loads(f.read())
+
+class Cube:
+        def __init__(self,port='COM1'):
+                self.cap_command = ''
+                self.face = []
+                self.serial = serial_init(port)
+                self.svm_date_init()
+                self.video = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                        print("can't open video")
+                        sys.exit()
+        def __del__(self):
+                self.serial.close()
+        def cap(self):
+                ret,frame = self.video.read()
+                return frame
+        def sort_face(self):
+                #@todo:如何调换面的顺序
+                pass
+        def svm_date_init(self):
+                with open ('svm_date.json','w') as f:
+                        f.write(json.dumps([1]))
         def roate(self,command):
                 if (type(command) is str)and (len(command)>0):
-                        self.serial.write('#'+command+'#')
+                        self.is_busy = True
+                        self.serial.write('@'+command+'\n')
                         while True:
-                                r = self.serial.read()
-                                if r == command+'ok':
+                                r = self.serial.readline()
+                                if r == command:
+                                        self.is_busy = False
                                         return True
-                                else:
-                                        return False
-        def get_code(self):
-                pass
-
-import sys
+        def get(self):
+                for i in self.cap_command :
+                        if not self.is_busy:
+                                self.roate(i)
+                                self.face.append(self.cap())
+                self.sort_face()
+                for i in self.face:
+                        Sole(i).run()
+                return load()
+##测试
 if __name__ == "__main__":
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
@@ -107,9 +123,9 @@ if __name__ == "__main__":
                 sys.exit()
         while True:
                 ret,frame = cap.read()
-                video = Sole(frame)
-                cv2.imshow('img',video.get_img())
-                print("svm date:",video.get_svm_date())
+                video = Sole(frame) 
+                print(video.get_roi())
+                cv2.imshow('img',video.get_visual())
                 if cv2.waitKey(1)&0xff == ord('q'):
                         break
         cap.release()

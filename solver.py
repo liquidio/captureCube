@@ -41,3 +41,54 @@ U面中心点为U颜色。
 @todo: 通讯协议尚未确定
 一个步骤发送一次命令知道返回完成，才继续发送下一个步骤
 '''
+import sys
+import json
+import serial
+from serial.tools.list_ports import comports
+from cv2 import cv2
+
+from detection import Sole,Cube
+
+#串口通信波特率
+BPS = 115200
+#超时时间
+TIMEX = 1
+svm = cv2.SVM()
+#@todo初步确定参数
+svm_params = dict( kernel_type = cv2.SVM_LINEAR,
+                svm_type = cv2.SVM_C_SVC,
+                C=2.67, gamma=5.383 )
+
+def print_serial():
+    port_list = list(comports())
+    for port in port_list:
+            print(port)
+
+def serial_init(port='COM1'):
+    try:
+        return serial.Serial(port,BPS,timeout=TIMEX)
+    except:
+        return None
+
+def training():
+    with open ('svm_date.json','r') as f:
+        svm_date = json.loads(f.read())
+    with open ('svm_label.json','r') as f:
+        svm_label = json.loads(f.read())
+    svm.train(svm_date,svm_label, params=svm_params)
+    svm.save('core.xml')
+
+def solver():
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+            print("can't open video")
+            sys.exit()
+    svm.loads('core.xml')
+    cube = Cube()
+    color_list = cube.get()
+    result = svm.predict_all(color_list)
+    cube.roate(result)
+    print('finish!')
+
+if __name__ == '__main__':
+    solver()
