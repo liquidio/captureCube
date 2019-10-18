@@ -49,6 +49,8 @@ from cv2 import cv2
 
 from detection import Sole,Cube
 
+#串口
+PORT = 'COM1'
 #串口通信波特率
 BPS = 115200
 #超时时间
@@ -64,9 +66,9 @@ def print_serial():
     for port in port_list:
             print(port)
 
-def serial_init(port='COM1'):
+def serial_init():
     try:
-        return serial.Serial(port,BPS,timeout=TIMEX)
+        return serial.Serial(PORT,BPS,timeout=TIMEX)
     except:
         return None
 
